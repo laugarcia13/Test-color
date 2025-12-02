@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Probador Lunare</title>
+
+    <!-- MediaPipe Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"
+        crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"
+        crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+
+    <style>
+        :root {
+            --bg-color: #F5F5DC;
+            /* Beige Claro (Beige) */
+            --text-color: #1D1D1F;
+            /* Dark Grey/Black */
+            --panel-bg: rgba(255, 255, 255, 0.95);
+            --border-color: rgba(0, 0, 0, 0.1);
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Landing Page */
+        #landing-page {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-color);
+            z-index: 200;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 0.5s ease;
+            text-align: center;
+            /* Ensure text is centered */
+            padding: 20px;
+        }
+
+        #landing-page h1 {
+            font-size: 2rem;
+            font-weight: 300;
+            letter-spacing: -0.5px;
+            margin-bottom: 40px;
+            color: var(--text-color);
+            max-width: 80%;
+        }
+
+        #btn-enter {
+            padding: 16px 40px;
+            font-size: 1rem;
+            background: var(--text-color);
+            color: #fff;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: transform 0.2s, opacity 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 500;
+        }
+
+        #btn-enter:active {
+            transform: scale(0.98);
+            opacity: 0.9;
+        }
+
+        /* Canvas & Video Container */
+        #canvas-container {
+            position: relative;
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        video {
+            display: none;
+        }
+
+        /* UI Overlay */
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            z-index: 10;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+
+        .ui-layer.visible {
+            opacity: 1;
+        }
+
+        /* Header (Minimal) */
+        header {
+            padding: 20px;
+            text-align: center;
+            pointer-events: auto;
+        }
+
+        header h2 {
+            font-size: 1rem;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.8);
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Controls Area */
+        .controls {
+            background: var(--panel-bg);
+            padding: 24px 20px 40px;
+            border-radius: 24px 24px 0 0;
+            pointer-events: auto;
+            box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Actions */
+        .actions {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 24px;
+            justify-content: center;
+        }
+
+        .btn-icon {
+            background: #fff;
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 500;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03);
+            transition: all 0.2s;
+        }
+
+        .btn-icon:active {
+            background: #f0f0f0;
+            transform: scale(0.98);
+        }
+
+        .btn-icon.active {
+            background: var(--text-color);
+            color: #fff;
+            border-color: var(--text-color);
+        }
+
+        /* Color Selector */
+        .color-scroll {
+            display: flex;
+            gap: 20px;
+            overflow-x: auto;
+            padding: 10px 5px;
+            scrollbar-width: none;
+            margin-bottom: 20px;
+        }
+
+        .color-scroll::-webkit-scrollbar {
+            display: none;
+        }
+
+        .color-option {
+            flex: 0 0 auto;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            position: relative;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .color-option.selected {
+            transform: scale(1.15);
+            border: 2px solid var(--text-color);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .color-label {
+            position: absolute;
+            bottom: -24px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.75rem;
+            white-space: nowrap;
+            color: var(--text-color);
+            font-weight: 500;
+        }
+
+        /* Intensity Slider */
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 0 10px;
+        }
+
+        .slider-label {
+            font-size: 0.85rem;
+            color: var(--text-color);
+            font-weight: 500;
+            min-width: 70px;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            -webkit-appearance: none;
+            background: #E5E5EA;
+            height: 4px;
+            border-radius: 2px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 24px;
+            height: 24px;
+            background: #fff;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+        }
+
+        /* Loader */
+        #loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(5px);
+            z-index: 100;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #loader.show {
+            display: flex;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(0, 0, 0, 0.1);
+            border-left-color: var(--text-color);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 16px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Landing Page -->
+    <div id="landing-page">
+        <h1>Bienvenido al probador Lunare</h1>
+        <button id="btn-enter">Ingresar</button>
+    </div>
+
+    <!-- Loader -->
+    <div id="loader">
+        <div class="spinner"></div>
+        <p style="color: var(--text-color); font-weight: 500;">Procesando...</p>
+    </div>
+
+    <!-- Main Content -->
+    <div id="canvas-container">
+        <video id="input-video" playsinline></video>
+        <canvas id="output-canvas"></canvas>
+    </div>
+
+    <!-- UI -->
+    <div class="ui-layer" id="ui-layer">
+        <header>
+            <h2>Lunare Virtual Try-On</h2>
+        </header>
+
+        <div class="controls">
+            <div class="actions">
+                <button class="btn-icon active" id="btn-camera">
+                    📷 Cámara
+                </button>
+                <button class="btn-icon" id="btn-upload">
+                    🖼️ Foto
+                </button>
+                <input type="file" id="file-input" accept="image/*">
+            </div>
+
+            <div class="color-scroll" id="color-list">
+                <!-- Colors injected by JS -->
+            </div>
+
+            <div class="slider-container">
+                <span class="slider-label">Intensidad</span>
+                <input type="range" id="intensity" min="0" max="100" value="40">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Configuration ---
+        // Updated Color List as requested
+        const COLORS = [
+            { name: 'Natural', type: 'natural', hex: 'transparent' },
+            {
+                name: 'Verde Claro',
+                base: '#90EE90',
+                highlight: '#98FB98',
+                ring: '#2F4F4F',
+                hex: '#90EE90'
+            },
+            {
+                name: 'Verde',
+                base: '#2E8B57',
+                highlight: '#3CB371',
+                ring: '#1a3320',
+                hex: '#2E8B57'
+            },
+            {
+                name: 'Celeste',
+                base: '#87CEEB',
+                highlight: '#E0FFFF',
+                ring: '#4682B4',
+                hex: '#87CEEB'
+            },
+            {
+                name: 'Azul',
+                base: '#4169E1',
+                highlight: '#1E90FF',
+                ring: '#191970',
+                hex: '#4169E1'
+            },
+            {
+                name: 'Marron',
+                base: '#8B4513',
+                highlight: '#A0522D',
+                ring: '#3E2723',
+                hex: '#8B4513'
+            },
+            {
+                name: 'Miel',
+                base: '#DAA520',
+                highlight: '#FFD700',
+                ring: '#4B3621',
+                hex: '#DAA520'
+            },
+            {
+                name: 'Gris',
+                base: '#778899',
+                highlight: '#B0C4DE',
+                ring: '#2F4F4F',
+                hex: '#778899'
+            }
+        ];
+
+        // --- State ---
+        let currentLensColor = COLORS[0];
+        let intensity = 0.4;
+        let isCameraActive = false;
+        let faceMesh;
+        let camera;
+        let imageMode = false;
+        let uploadedImage = null;
+        let isModelReady = false;
+
+        const lensTextures = {};
+
+        // --- DOM Elements ---
+        const landingPage = document.getElementById('landing-page');
+        const btnEnter = document.getElementById('btn-enter');
+        const uiLayer = document.getElementById('ui-layer');
+        const videoElement = document.getElementById('input-video');
+        const canvasElement = document.getElementById('output-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const loader = document.getElementById('loader');
+        const colorList = document.getElementById('color-list');
+        const intensitySlider = document.getElementById('intensity');
+        const btnCamera = document.getElementById('btn-camera');
+        const btnUpload = document.getElementById('btn-upload');
+        const fileInput = document.getElementById('file-input');
+
+        // --- Initialization ---
+        function initApp() {
+            generateLensTextures();
+            generateColorOptions();
+            initFaceMesh();
+
+            btnEnter.onclick = enterApp;
+            intensitySlider.oninput = (e) => { intensity = e.target.value / 100; };
+            btnCamera.onclick = startCamera;
+            btnUpload.onclick = () => fileInput.click();
+            fileInput.onchange = handleImageUpload;
+        }
+
+        function generateColorOptions() {
+            COLORS.forEach((c, index) => {
+                const el = document.createElement('div');
+                el.className = `color-option ${index === 0 ? 'selected' : ''}`;
+
+                if (c.type === 'natural') {
+                    el.style.background = 'linear-gradient(45deg, #e0e0e0 25%, transparent 25%, transparent 75%, #e0e0e0 75%, #e0e0e0), linear-gradient(45deg, #e0e0e0 25%, transparent 25%, transparent 75%, #e0e0e0 75%, #e0e0e0)';
+                    el.style.backgroundSize = '10px 10px';
+                } else {
+                    el.style.backgroundImage = `url(${lensTextures[c.name].toDataURL()})`;
+                    el.style.backgroundSize = 'cover';
+                }
+
+                el.innerHTML = `<span class="color-label">${c.name}</span>`;
+                el.onclick = () => selectColor(c, el);
+                colorList.appendChild(el);
+            });
+        }
+
+        function selectColor(colorObj, element) {
+            currentLensColor = colorObj;
+            document.querySelectorAll('.color-option').forEach(el => el.classList.remove('selected'));
+            element.classList.add('selected');
+
+            if (imageMode && uploadedImage && isModelReady) {
+                faceMesh.send({ image: uploadedImage });
+            }
+        }
+
+        async function enterApp() {
+            landingPage.style.opacity = '0';
+            setTimeout(() => {
+                landingPage.style.display = 'none';
+                uiLayer.classList.add('visible');
+                startCamera();
+            }, 500);
+        }
+
+        // --- Texture Generation ---
+        function generateLensTextures() {
+            const size = 256;
+            const center = size / 2;
+
+            COLORS.forEach(color => {
+                if (color.type === 'natural') return;
+
+                const c = document.createElement('canvas');
+                c.width = size;
+                c.height = size;
+                const ctx = c.getContext('2d');
+
+                // Base Gradient
+                const grad = ctx.createRadialGradient(center, center, size * 0.1, center, center, size * 0.5);
+                grad.addColorStop(0.3, color.base);
+                grad.addColorStop(0.9, color.ring);
+
+                ctx.globalAlpha = 0.6;
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.arc(center, center, size * 0.5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+
+                // Fibrous Texture
+                ctx.save();
+                ctx.translate(center, center);
+                ctx.globalCompositeOperation = 'source-over';
+
+                for (let i = 0; i < 360; i += 1) {
+                    const angle = (i * Math.PI) / 180;
+                    const length = size * 0.2 + Math.random() * size * 0.28;
+                    const opacity = Math.random() * 0.4 + 0.1;
+
+                    ctx.strokeStyle = i % 3 === 0 ? color.highlight : (i % 2 === 0 ? color.base : color.ring);
+                    ctx.globalAlpha = opacity;
+                    ctx.lineWidth = Math.random() * 1.2;
+
+                    ctx.beginPath();
+                    ctx.moveTo(Math.cos(angle) * size * 0.15, Math.sin(angle) * size * 0.15);
+                    ctx.lineTo(Math.cos(angle) * length, Math.sin(angle) * length);
+                    ctx.stroke();
+                }
+                ctx.restore();
+
+                // Limbal Ring
+                const ringGrad = ctx.createRadialGradient(center, center, size * 0.42, center, center, size * 0.5);
+                ringGrad.addColorStop(0, 'transparent');
+                ringGrad.addColorStop(0.6, color.ring);
+                ringGrad.addColorStop(1, 'rgba(0,0,0,0.6)');
+
+                ctx.fillStyle = ringGrad;
+                ctx.beginPath();
+                ctx.arc(center, center, size * 0.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Pupil
+                ctx.fillStyle = '#000000';
+                ctx.beginPath();
+                ctx.arc(center, center, size * 0.16, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Pupil Soft Edge
+                const pupilGrad = ctx.createRadialGradient(center, center, size * 0.14, center, center, size * 0.20);
+                pupilGrad.addColorStop(0, 'rgba(0,0,0,0.9)');
+                pupilGrad.addColorStop(1, 'transparent');
+                ctx.fillStyle = pupilGrad;
+                ctx.beginPath();
+                ctx.arc(center, center, size * 0.20, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Specular Highlight
+                ctx.fillStyle = 'rgba(255,255,255,0.4)';
+                ctx.beginPath();
+                ctx.arc(center - size * 0.12, center - size * 0.12, size * 0.04, 0, Math.PI * 2);
+                ctx.fill();
+
+                lensTextures[color.name] = c;
+            });
+        }
+
+        // --- MediaPipe Setup ---
+        async function initFaceMesh() {
+            faceMesh = new FaceMesh({
+                locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+                }
+            });
+
+            faceMesh.setOptions({
+                maxNumFaces: 1,
+                refineLandmarks: true,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+
+            faceMesh.onResults(onResults);
+            isModelReady = true;
+        }
+
+        // --- Camera Logic ---
+        async function startCamera() {
+            imageMode = false;
+            loader.classList.add('show');
+
+            if (camera) await camera.stop();
+
+            camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    if (!imageMode) {
+                        await faceMesh.send({ image: videoElement });
+                        loader.classList.remove('show');
+                    }
+                },
+                width: 1280,
+                height: 720
+            });
+
+            await camera.start();
+            isCameraActive = true;
+            btnCamera.classList.add('active');
+            btnUpload.classList.remove('active');
+        }
+
+        // --- Image Upload Logic ---
+        function handleImageUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            loader.classList.add('show');
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = async () => {
+                    imageMode = true;
+                    if (camera) await camera.stop();
+                    uploadedImage = img;
+
+                    resizeCanvasForImage(img);
+
+                    try {
+                        if (!isModelReady) {
+                            console.warn("Model not ready yet, waiting...");
+                        }
+                        await faceMesh.send({ image: img });
+                    } catch (err) {
+                        console.error("Error processing image:", err);
+                        alert("Error al procesar la imagen. Intenta con otra.");
+                    } finally {
+                        loader.classList.remove('show');
+                    }
+
+                    btnUpload.classList.add('active');
+                    btnCamera.classList.remove('active');
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function resizeCanvasForImage(img) {
+            const container = document.getElementById('canvas-container');
+            const maxWidth = container.clientWidth;
+            const maxHeight = container.clientHeight;
+
+            let width = img.width;
+            let height = img.height;
+
+            const scale = Math.min(maxWidth / width, maxHeight / height);
+            canvasElement.width = width * scale;
+            canvasElement.height = height * scale;
+        }
+
+        // --- Rendering Loop ---
+        function onResults(results) {
+            if (!imageMode) {
+                canvasElement.width = videoElement.videoWidth;
+                canvasElement.height = videoElement.videoHeight;
+            }
+
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                if (currentLensColor.name !== 'Natural') {
+                    for (const landmarks of results.multiFaceLandmarks) {
+                        drawIris(landmarks, true);
+                        drawIris(landmarks, false);
+                    }
+                }
+            }
+            canvasCtx.restore();
+        }
+
+        function drawIris(landmarks, isLeft) {
+            // Iris indices
+            const centerIdx = isLeft ? 468 : 473;
+            const edgeIndices = isLeft ? [469, 470, 471, 472] : [474, 475, 476, 477];
+
+            // Eyelid indices (approximate loop for masking)
+            // Left Eye: 33 (inner), 133 (outer), 159 (top), 145 (bottom)
+            // Right Eye: 362 (inner), 263 (outer), 386 (top), 374 (bottom)
+            // We use a simplified polygon for the eye opening
+            const eyeContourIndices = isLeft
+                ? [33, 246, 161, 160, 159, 158, 157, 173, 133, 155, 154, 153, 145, 144, 163, 7]
+                : [362, 398, 384, 385, 386, 387, 388, 466, 263, 249, 390, 373, 374, 380, 381, 382];
+
+            const center = landmarks[centerIdx];
+
+            let radius = 0;
+            edgeIndices.forEach(idx => {
+                const edge = landmarks[idx];
+                const d = Math.sqrt(
+                    Math.pow((edge.x - center.x) * canvasElement.width, 2) +
+                    Math.pow((edge.y - center.y) * canvasElement.height, 2)
+                );
+                radius += d;
+            });
+            radius = radius / edgeIndices.length;
+
+            const x = center.x * canvasElement.width;
+            const y = center.y * canvasElement.height;
+
+            const texture = lensTextures[currentLensColor.name];
+            if (texture) {
+                const drawSize = radius * 2.15;
+
+                // --- MASKING START ---
+                canvasCtx.save();
+
+                // Create Eyelid Clipping Path
+                canvasCtx.beginPath();
+                const firstPoint = landmarks[eyeContourIndices[0]];
+                canvasCtx.moveTo(firstPoint.x * canvasElement.width, firstPoint.y * canvasElement.height);
+
+                for (let i = 1; i < eyeContourIndices.length; i++) {
+                    const p = landmarks[eyeContourIndices[i]];
+                    canvasCtx.lineTo(p.x * canvasElement.width, p.y * canvasElement.height);
+                }
+                canvasCtx.closePath();
+
+                // Soften the edge of the eyelid mask slightly
+                // Note: canvas clipping is hard-edged. For soft edges we'd need a temp canvas + composite operations.
+                // For performance in JS-only, hard clip is standard, but we can feather the lens itself.
+                canvasCtx.clip();
+
+                // --- LENS RENDERING (Inside Mask) ---
+
+                // Pass 1: Overlay
+                canvasCtx.save();
+                canvasCtx.beginPath();
+                canvasCtx.arc(x, y, radius * 1.05, 0, 2 * Math.PI);
+                canvasCtx.closePath();
+                // We don't clip to circle here, we rely on eyelid clip + transparency
+
+                canvasCtx.globalCompositeOperation = 'overlay';
+                canvasCtx.globalAlpha = intensity * 1.2;
+                canvasCtx.drawImage(texture, x - drawSize / 2, y - drawSize / 2, drawSize, drawSize);
+                canvasCtx.restore();
+
+                // Pass 2: Source-Over
+                canvasCtx.save();
+                canvasCtx.globalCompositeOperation = 'source-over';
+                canvasCtx.globalAlpha = intensity * 0.6;
+                canvasCtx.drawImage(texture, x - drawSize / 2, y - drawSize / 2, drawSize, drawSize);
+                canvasCtx.restore();
+
+                // --- MASKING END ---
+                canvasCtx.restore();
+            }
+        }
+
+        window.onload = initApp;
+
+    </script>
+</body>
+
+</html>
