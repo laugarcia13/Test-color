@@ -17,7 +17,9 @@
     <style>
         :root {
             --bg-color: #F5F5DC;
-            /* Beige Claro (Beige) */
+            /* Beige */
+            --pattern-color: #E6E0D0;
+            /* Slightly darker beige for pattern */
             --text-color: #1D1D1F;
             /* Dark Grey/Black */
             --panel-bg: rgba(255, 255, 255, 0.95);
@@ -43,14 +45,17 @@
             flex-direction: column;
         }
 
-        /* Landing Page */
+        /* Landing Page with Seamless Pattern */
         #landing-page {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: var(--bg-color);
+            background-color: var(--bg-color);
+            /* Minimalist Line Art Pattern: Eyes, Iris, Drops, Lenses, Cases, Circles */
+            background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%23E6E0D0' stroke-width='1'%3E%3C!-- Eye --%3E%3Cpath d='M10 20 Q25 5 40 20 Q25 35 10 20 Z' /%3E%3Ccircle cx='25' cy='20' r='5' /%3E%3C!-- Drop --%3E%3Cpath d='M60 15 Q65 25 65 30 A5 5 0 1 1 55 30 Q55 25 60 15 Z' /%3E%3C!-- Lens --%3E%3Ccircle cx='85' cy='20' r='8' stroke-dasharray='2 2' /%3E%3C!-- Case --%3E%3Crect x='10' y='60' width='20' height='10' rx='3' /%3E%3Ccircle cx='15' cy='65' r='2' /%3E%3Ccircle cx='25' cy='65' r='2' /%3E%3C!-- Optical Circle --%3E%3Ccircle cx='50' cy='70' r='10' /%3E%3Cpath d='M50 60 L50 80 M40 70 L60 70' /%3E%3C!-- Linear Iris --%3E%3Ccircle cx='85' cy='70' r='6' /%3E%3Cpath d='M85 64 L85 76 M79 70 L91 70' /%3E%3C/g%3E%3C/svg%3E");
+            background-size: 100px 100px;
             z-index: 200;
             display: flex;
             flex-direction: column;
@@ -58,22 +63,28 @@
             align-items: center;
             transition: opacity 0.5s ease;
             text-align: center;
-            /* Ensure text is centered */
             padding: 20px;
         }
 
         #landing-page h1 {
-            font-size: 2rem;
-            font-weight: 300;
-            letter-spacing: -0.5px;
-            margin-bottom: 40px;
+            font-size: 2.5rem;
+            font-weight: 600;
+            margin-bottom: 10px;
             color: var(--text-color);
+        }
+
+        #landing-page p {
+            font-size: 1.1rem;
+            font-weight: 400;
+            margin-bottom: 40px;
+            color: #555;
             max-width: 80%;
+            line-height: 1.5;
         }
 
         #btn-enter {
-            padding: 16px 40px;
-            font-size: 1rem;
+            padding: 16px 48px;
+            font-size: 1.1rem;
             background: var(--text-color);
             color: #fff;
             border: none;
@@ -82,7 +93,8 @@
             transition: transform 0.2s, opacity 0.2s;
             text-transform: uppercase;
             letter-spacing: 1px;
-            font-weight: 500;
+            font-weight: 600;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
         }
 
         #btn-enter:active {
@@ -314,8 +326,9 @@
 
     <!-- Landing Page -->
     <div id="landing-page">
-        <h1>Bienvenido al probador Lunare</h1>
-        <button id="btn-enter">Ingresar</button>
+        <h1>¡Hola!</h1>
+        <p>Viví la experiencia Lunare, probá tus lentes en segundos✨</p>
+        <button id="btn-enter">Empezar</button>
     </div>
 
     <!-- Loader -->
@@ -360,7 +373,6 @@
 
     <script>
         // --- Configuration ---
-        // Updated Color List as requested
         const COLORS = [
             { name: 'Natural', type: 'natural', hex: 'transparent' },
             {
@@ -478,7 +490,8 @@
             element.classList.add('selected');
 
             if (imageMode && uploadedImage && isModelReady) {
-                faceMesh.send({ image: uploadedImage });
+                // Trigger re-render
+                onResults({ image: uploadedImage, multiFaceLandmarks: lastLandmarks });
             }
         }
 
@@ -589,6 +602,9 @@
             });
 
             faceMesh.onResults(onResults);
+
+            // Wait for initialization
+            await faceMesh.initialize();
             isModelReady = true;
         }
 
@@ -617,30 +633,44 @@
         }
 
         // --- Image Upload Logic ---
-        function handleImageUpload(e) {
+        async function handleImageUpload(e) {
             const file = e.target.files[0];
             if (!file) return;
 
             loader.classList.add('show');
+
+            // Stop camera immediately to free resources
+            if (camera) await camera.stop();
+            isCameraActive = false;
 
             const reader = new FileReader();
             reader.onload = (event) => {
                 const img = new Image();
                 img.onload = async () => {
                     imageMode = true;
-                    if (camera) await camera.stop();
                     uploadedImage = img;
 
                     resizeCanvasForImage(img);
 
+                    // Wait loop for model ready
+                    let attempts = 0;
+                    while (!isModelReady && attempts < 20) {
+                        await new Promise(r => setTimeout(r, 500));
+                        attempts++;
+                    }
+
+                    if (!isModelReady) {
+                        alert("El modelo de IA no está listo. Por favor recarga la página.");
+                        loader.classList.remove('show');
+                        return;
+                    }
+
                     try {
-                        if (!isModelReady) {
-                            console.warn("Model not ready yet, waiting...");
-                        }
+                        // Send image to FaceMesh
                         await faceMesh.send({ image: img });
                     } catch (err) {
                         console.error("Error processing image:", err);
-                        alert("Error al procesar la imagen. Intenta con otra.");
+                        alert("Error al procesar la imagen.");
                     } finally {
                         loader.classList.remove('show');
                     }
@@ -667,7 +697,17 @@
         }
 
         // --- Rendering Loop ---
+        let lastLandmarks = null;
+
         function onResults(results) {
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                lastLandmarks = results.multiFaceLandmarks;
+            }
+
+            // If we are in image mode and just changing colors, we might not get new results,
+            // so we use the image from the results OR the uploaded image
+            const imgToDraw = imageMode ? uploadedImage : results.image;
+
             if (!imageMode) {
                 canvasElement.width = videoElement.videoWidth;
                 canvasElement.height = videoElement.videoHeight;
@@ -675,11 +715,13 @@
 
             canvasCtx.save();
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(imgToDraw, 0, 0, canvasElement.width, canvasElement.height);
 
-            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+            const landmarksToDraw = results.multiFaceLandmarks || lastLandmarks;
+
+            if (landmarksToDraw && landmarksToDraw.length > 0) {
                 if (currentLensColor.name !== 'Natural') {
-                    for (const landmarks of results.multiFaceLandmarks) {
+                    for (const landmarks of landmarksToDraw) {
                         drawIris(landmarks, true);
                         drawIris(landmarks, false);
                     }
@@ -689,14 +731,10 @@
         }
 
         function drawIris(landmarks, isLeft) {
-            // Iris indices
             const centerIdx = isLeft ? 468 : 473;
             const edgeIndices = isLeft ? [469, 470, 471, 472] : [474, 475, 476, 477];
 
-            // Eyelid indices (approximate loop for masking)
-            // Left Eye: 33 (inner), 133 (outer), 159 (top), 145 (bottom)
-            // Right Eye: 362 (inner), 263 (outer), 386 (top), 374 (bottom)
-            // We use a simplified polygon for the eye opening
+            // Eye Contour for Masking
             const eyeContourIndices = isLeft
                 ? [33, 246, 161, 160, 159, 158, 157, 173, 133, 155, 154, 153, 145, 144, 163, 7]
                 : [362, 398, 384, 385, 386, 387, 388, 466, 263, 249, 390, 373, 374, 380, 381, 382];
@@ -734,10 +772,6 @@
                     canvasCtx.lineTo(p.x * canvasElement.width, p.y * canvasElement.height);
                 }
                 canvasCtx.closePath();
-
-                // Soften the edge of the eyelid mask slightly
-                // Note: canvas clipping is hard-edged. For soft edges we'd need a temp canvas + composite operations.
-                // For performance in JS-only, hard clip is standard, but we can feather the lens itself.
                 canvasCtx.clip();
 
                 // --- LENS RENDERING (Inside Mask) ---
@@ -747,7 +781,6 @@
                 canvasCtx.beginPath();
                 canvasCtx.arc(x, y, radius * 1.05, 0, 2 * Math.PI);
                 canvasCtx.closePath();
-                // We don't clip to circle here, we rely on eyelid clip + transparency
 
                 canvasCtx.globalCompositeOperation = 'overlay';
                 canvasCtx.globalAlpha = intensity * 1.2;
